@@ -1,0 +1,12 @@
+{
+  "name": "Play Cricket POTM",
+  "version": "1.0.0",
+  "description": "Fetches match data from Play Cricket API and analyses performances to recommend Player of the Match for Group A and Group B",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run the Play Cricket POTM analysis. Execute the script at .kiro/scripts/play_cricket_mcp.py with --group both. The PLAY_CRICKET_API_TOKEN environment variable must be set. After getting the output, present the results in a formatted table showing top performers per match and overall POTM recommendation for each group. Apply the analysis criteria from .kiro/steering/play-cricket-potm.md to provide context-aware recommendations beyond just the raw scores."
+  }
+}
