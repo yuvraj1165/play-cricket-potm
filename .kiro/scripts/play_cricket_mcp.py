@@ -376,10 +376,12 @@ def analyse_match(match_detail):
             "batting": perf["batting"],
             "bowling": perf["bowling"],
             "fielding": perf.get("fielding"),
-            "score": score
+            "score": score,
+            "won_match": bool(player_won)
         })
 
-    scored_players.sort(key=lambda x: x["score"], reverse=True)
+    # Sort by score descending, then winning team first as tiebreaker
+    scored_players.sort(key=lambda x: (x["score"], x["won_match"]), reverse=True)
 
     return {
         "match_id": match.get("match_id", ""),
@@ -511,11 +513,12 @@ def generate_whatsapp_summary(group_name, match_analyses):
         won_match = analysis.get("winning_team", "") and analysis["winning_team"] in winner["team"]
         one_liner = generate_one_liner(winner, won_match=won_match)
         perf_str = format_performance(winner)
+        win_emoji = "✅" if won_match else "❌"
 
         # Determine result text
         result_text = analysis.get("result", "")
 
-        lines.append(f"{match_num}. *{winner['name']}* ({winner['team']}) vs {opponent}")
+        lines.append(f"{match_num}. *{winner['name']}* ({winner['team']} {win_emoji}) vs {opponent}")
         lines.append(f"   Result: {result_text}")
         lines.append(f"   {perf_str} | {winner['score']:.0f}pts")
         lines.append(f"   _{one_liner}_")
@@ -527,13 +530,14 @@ def generate_whatsapp_summary(group_name, match_analyses):
             "won_match": won_match
         })
 
-    # Overall pick
-    overall_top.sort(key=lambda x: x["score"], reverse=True)
+    # Overall pick — sort by score, then winning team as tiebreaker
+    overall_top.sort(key=lambda x: (x["score"], x["won_match"]), reverse=True)
     if overall_top:
         pick = overall_top[0]
         one_liner = generate_one_liner(pick, won_match=pick["won_match"])
         perf_str = format_performance(pick)
-        lines.append(f"🏆 *{group_name} POTM: {pick['name']}* ({pick['team']}) vs {pick['opponent']}")
+        pick_emoji = "✅" if pick["won_match"] else "❌"
+        lines.append(f"🏆 *{group_name} POTM: {pick['name']}* ({pick['team']} {pick_emoji}) vs {pick['opponent']}")
         lines.append(f"   {perf_str} | {pick['score']:.0f}pts")
         lines.append(f"   _{one_liner}_")
 
@@ -616,8 +620,8 @@ def generate_poll_options(group_name, match_analyses):
         lines.append("No candidates found.")
         return "\n".join(lines)
 
-    # Sort by score descending
-    all_candidates.sort(key=lambda c: c["player"]["score"], reverse=True)
+    # Sort by score descending, then winning team as tiebreaker
+    all_candidates.sort(key=lambda c: (c["player"]["score"], c["player"].get("won_match", False)), reverse=True)
 
     # Remove duplicates (same player appearing in multiple contexts) - keep highest score
     seen = set()
@@ -645,9 +649,10 @@ def generate_poll_options(group_name, match_analyses):
         short_name = get_short_name(winner["name"])
         team_short = get_team_short(winner["team"])
         opp_short = get_team_short(opponent)
+        win_emoji = "✅" if winner.get("won_match", False) else "❌"
 
         perf = format_performance_short(winner)
-        poll_option = f"{short_name} ({team_short}) vs {opp_short} - {perf}"
+        poll_option = f"{short_name} ({team_short} {win_emoji}) vs {opp_short} - {perf}"
 
         # Ensure under 100 chars
         if len(poll_option) > 100:
@@ -683,8 +688,8 @@ def generate_report(group_name, match_analyses):
 
         lines.append("")
 
-    # Overall POTM recommendation
-    all_top_performers.sort(key=lambda x: x["score"], reverse=True)
+    # Overall POTM recommendation — sort by score, then winning team as tiebreaker
+    all_top_performers.sort(key=lambda x: (x["score"], x.get("won_match", False)), reverse=True)
     if all_top_performers:
         lines.append(f"### 🏆 {group_name} — Overall POTM Recommendation\n")
         lines.append("| Rank | Player | Team | Performance | Score |")
