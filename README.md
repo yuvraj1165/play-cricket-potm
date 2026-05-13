@@ -1,4 +1,4 @@
-# Play Cricket — POTM Analyser
+# Play Cricket ï¿½ POTM Analyser
 
 Automated Player of the Match analysis for Bradford Mutual Sunday School Cricket League.
 
@@ -18,7 +18,7 @@ Automated Player of the Match analysis for Bradford Mutual Sunday School Cricket
 
 ## Usage
 
-- **Default:** Analyses last Sunday's matches for both groups
+- **Default:** Analyses last Saturday's matches for both groups
 - **Specific date:** `python .kiro/scripts/play_cricket_mcp.py --date 25/04/2026`
 - **Single group:** `python .kiro/scripts/play_cricket_mcp.py --group A`
 
