@@ -20,6 +20,12 @@ SEASON = str(datetime.now().year)
 GROUP_A_COMPETITION_ID = "136363"
 GROUP_B_COMPETITION_ID = "137864"
 
+# Cup competition IDs
+SJR_CUP_POOL_A_ID = "137059"
+SJR_CUP_POOL_B_ID = "137060"
+H_BROADBENT_TROPHY_POOL_A_ID = "137061"
+H_BROADBENT_TROPHY_POOL_B_ID = "137062"
+
 # Team abbreviations for WhatsApp poll (max 100 chars per option)
 TEAM_ABBREVIATIONS = {
     "Apperley Bridge CC": "AB",
@@ -124,18 +130,30 @@ def fetch_match_detail(match_id):
 
 
 def categorize_matches(matches):
-    """Split matches into Group A and Group B."""
+    """Split matches into Group A, Group B, and cup competitions."""
     group_a = []
     group_b = []
+    sjr_cup_a = []
+    sjr_cup_b = []
+    broadbent_a = []
+    broadbent_b = []
 
     for match in matches:
-        comp_id = match.get("competition_id", "")
-        if str(comp_id) == GROUP_A_COMPETITION_ID:
+        comp_id = str(match.get("competition_id", ""))
+        if comp_id == GROUP_A_COMPETITION_ID:
             group_a.append(match)
-        elif str(comp_id) == GROUP_B_COMPETITION_ID:
+        elif comp_id == GROUP_B_COMPETITION_ID:
             group_b.append(match)
+        elif comp_id == SJR_CUP_POOL_A_ID:
+            sjr_cup_a.append(match)
+        elif comp_id == SJR_CUP_POOL_B_ID:
+            sjr_cup_b.append(match)
+        elif comp_id == H_BROADBENT_TROPHY_POOL_A_ID:
+            broadbent_a.append(match)
+        elif comp_id == H_BROADBENT_TROPHY_POOL_B_ID:
+            broadbent_b.append(match)
 
-    return group_a, group_b
+    return group_a, group_b, sjr_cup_a, sjr_cup_b, broadbent_a, broadbent_b
 
 
 def analyse_batting(innings):
@@ -709,8 +727,9 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Play Cricket POTM Analyser")
-    parser.add_argument("--date", help="Match date in DD/MM/YYYY format (default: last Sunday)")
-    parser.add_argument("--group", choices=["A", "B", "both"], default="both", help="Which group to analyse")
+    parser.add_argument("--date", help="Match date in DD/MM/YYYY format (default: last Saturday)")
+    parser.add_argument("--group", choices=["A", "B", "both", "sjr", "broadbent", "cup", "all"], default="all",
+                        help="Which competition to analyse: A, B, both (league only), sjr, broadbent, cup (all cups), all (everything)")
     args = parser.parse_args()
 
     match_date = args.date or get_last_saturday()
@@ -726,51 +745,69 @@ def main():
         return
 
     # Categorize
-    group_a, group_b = categorize_matches(matches)
+    group_a, group_b, sjr_cup_a, sjr_cup_b, broadbent_a, broadbent_b = categorize_matches(matches)
     print(f"Group A: {len(group_a)} matches")
-    print(f"Group B: {len(group_b)} matches\n")
+    print(f"Group B: {len(group_b)} matches")
+    print(f"SJR Cup Pool A: {len(sjr_cup_a)} matches")
+    print(f"SJR Cup Pool B: {len(sjr_cup_b)} matches")
+    print(f"H. Broadbent Trophy Pool A: {len(broadbent_a)} matches")
+    print(f"H. Broadbent Trophy Pool B: {len(broadbent_b)} matches\n")
 
-    # Fetch and analyse each match
-    group_a_analyses = []
-    group_b_analyses = []
+    # Define which competitions to process based on --group arg
+    competitions_to_process = []
 
-    if args.group in ("A", "both") and group_a:
-        print("Fetching Group A match details...")
-        for match in group_a:
+    if args.group in ("A", "both", "all"):
+        if group_a:
+            competitions_to_process.append(("Group A", group_a))
+    if args.group in ("B", "both", "all"):
+        if group_b:
+            competitions_to_process.append(("Group B", group_b))
+    if args.group in ("sjr", "cup", "all"):
+        # Combine SJR Cup Pool A & B into a single competition
+        sjr_combined = sjr_cup_a + sjr_cup_b
+        if sjr_combined:
+            competitions_to_process.append(("SJR Cup", sjr_combined))
+    if args.group in ("broadbent", "cup", "all"):
+        # Combine H. Broadbent Trophy Pool A & B into a single competition
+        broadbent_combined = broadbent_a + broadbent_b
+        if broadbent_combined:
+            competitions_to_process.append(("H. Broadbent Trophy", broadbent_combined))
+
+    if not competitions_to_process:
+        print("No matches found for the selected competition(s).")
+        return
+
+    # Fetch and analyse each competition
+    all_analyses = {}  # comp_name -> list of analyses
+
+    for comp_name, comp_matches in competitions_to_process:
+        print(f"Fetching {comp_name} match details...")
+        analyses = []
+        for match in comp_matches:
             mid = match.get("id") or match.get("match_id")
             detail = fetch_match_detail(mid)
             analysis = analyse_match(detail)
-            group_a_analyses.append(analysis)
-        print(generate_report("Group A", group_a_analyses))
-
-    if args.group in ("B", "both") and group_b:
-        print("\nFetching Group B match details...")
-        for match in group_b:
-            mid = match.get("id") or match.get("match_id")
-            detail = fetch_match_detail(mid)
-            analysis = analyse_match(detail)
-            group_b_analyses.append(analysis)
-        print(generate_report("Group B", group_b_analyses))
+            analyses.append(analysis)
+        all_analyses[comp_name] = analyses
+        print(generate_report(comp_name, analyses))
 
     # WhatsApp-ready summary
     print("\n\n" + "=" * 60)
     print("📱 WHATSAPP-READY SUMMARY")
     print("=" * 60)
 
-    if group_a_analyses:
-        print(generate_whatsapp_summary("Group A", group_a_analyses))
-    if group_b_analyses:
-        print(generate_whatsapp_summary("Group B", group_b_analyses))
+    for comp_name, analyses in all_analyses.items():
+        if analyses:
+            print(generate_whatsapp_summary(comp_name, analyses))
 
     # WhatsApp poll options (short form, max 100 chars)
     print("\n\n" + "=" * 60)
     print("🗳️ WHATSAPP POLL OPTIONS")
     print("=" * 60)
 
-    if group_a_analyses:
-        print(generate_poll_options("Group A", group_a_analyses))
-    if group_b_analyses:
-        print(generate_poll_options("Group B", group_b_analyses))
+    for comp_name, analyses in all_analyses.items():
+        if analyses:
+            print(generate_poll_options(comp_name, analyses))
 
 
 if __name__ == "__main__":
