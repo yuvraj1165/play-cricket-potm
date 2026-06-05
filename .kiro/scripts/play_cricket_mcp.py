@@ -26,6 +26,11 @@ SJR_CUP_POOL_B_ID = "137060"
 H_BROADBENT_TROPHY_POOL_A_ID = "137061"
 H_BROADBENT_TROPHY_POOL_B_ID = "137062"
 
+# T20 Cup competition IDs (Tuesday matches)
+RIZUES_T20_GROUP_A_ID = "138140"
+RIZUES_T20_GROUP_B_ID = "138141"
+RIZUES_T20_GROUP_C_ID = "138142"
+
 # Team abbreviations for WhatsApp poll (max 100 chars per option)
 TEAM_ABBREVIATIONS = {
     "Apperley Bridge CC": "AB",
@@ -111,6 +116,16 @@ def get_last_sunday():
     return last_sun.strftime("%d/%m/%Y")
 
 
+def get_last_tuesday():
+    """Get the date of last Tuesday in DD/MM/YYYY format."""
+    today = datetime.now()
+    days_since_tuesday = (today.weekday() - 1) % 7
+    if days_since_tuesday == 0:
+        days_since_tuesday = 7
+    last_tue = today - timedelta(days=days_since_tuesday)
+    return last_tue.strftime("%d/%m/%Y")
+
+
 def fetch_matches(match_date=None):
     """Fetch all matches for the site and season, filtered by date."""
     data = api_request("matches.json", {"site_id": SITE_ID, "season": SEASON})
@@ -130,13 +145,16 @@ def fetch_match_detail(match_id):
 
 
 def categorize_matches(matches):
-    """Split matches into Group A, Group B, and cup competitions."""
+    """Split matches into Group A, Group B, cup competitions, and T20 groups."""
     group_a = []
     group_b = []
     sjr_cup_a = []
     sjr_cup_b = []
     broadbent_a = []
     broadbent_b = []
+    t20_group_a = []
+    t20_group_b = []
+    t20_group_c = []
 
     for match in matches:
         comp_id = str(match.get("competition_id", ""))
@@ -152,8 +170,14 @@ def categorize_matches(matches):
             broadbent_a.append(match)
         elif comp_id == H_BROADBENT_TROPHY_POOL_B_ID:
             broadbent_b.append(match)
+        elif comp_id == RIZUES_T20_GROUP_A_ID:
+            t20_group_a.append(match)
+        elif comp_id == RIZUES_T20_GROUP_B_ID:
+            t20_group_b.append(match)
+        elif comp_id == RIZUES_T20_GROUP_C_ID:
+            t20_group_c.append(match)
 
-    return group_a, group_b, sjr_cup_a, sjr_cup_b, broadbent_a, broadbent_b
+    return group_a, group_b, sjr_cup_a, sjr_cup_b, broadbent_a, broadbent_b, t20_group_a, t20_group_b, t20_group_c
 
 
 def analyse_batting(innings):
@@ -650,10 +674,19 @@ def generate_poll_options(group_name, match_analyses):
             seen.add(name)
             unique_candidates.append(c)
 
-    # Find the top score and filter to within 2 points
+    # Find the top score and determine poll options
     top_score = unique_candidates[0]["player"]["score"]
-    threshold = top_score - 2
-    filtered = [c for c in unique_candidates if c["player"]["score"] >= threshold]
+    second_score = unique_candidates[1]["player"]["score"] if len(unique_candidates) > 1 else 0
+
+    # If the leader is 3+ points clear, they're a clear winner — show only top 3
+    if top_score - second_score >= 3:
+        filtered = unique_candidates[:3]
+    else:
+        # Otherwise show all within 2 points of the top, capped at 5
+        threshold = top_score - 2
+        filtered = [c for c in unique_candidates if c["player"]["score"] >= threshold]
+        if len(filtered) > 5:
+            filtered = filtered[:5]
 
     # Ensure minimum 3 options for comparison
     if len(filtered) < 3 and len(unique_candidates) >= 3:
@@ -728,11 +761,15 @@ def main():
 
     parser = argparse.ArgumentParser(description="Play Cricket POTM Analyser")
     parser.add_argument("--date", help="Match date in DD/MM/YYYY format (default: last Saturday)")
-    parser.add_argument("--group", choices=["A", "B", "both", "sjr", "broadbent", "cup", "all"], default="all",
-                        help="Which competition to analyse: A, B, both (league only), sjr, broadbent, cup (all cups), all (everything)")
+    parser.add_argument("--group", choices=["A", "B", "both", "sjr", "broadbent", "cup", "t20", "all"], default="all",
+                        help="Which competition to analyse: A, B, both (league only), sjr, broadbent, cup (all Saturday cups), t20 (Tuesday T20), all (everything)")
     args = parser.parse_args()
 
-    match_date = args.date or get_last_saturday()
+    # Use last Tuesday for T20, last Saturday for everything else
+    if args.group == "t20":
+        match_date = args.date or get_last_tuesday()
+    else:
+        match_date = args.date or get_last_saturday()
     print(f"Fetching matches for date: {match_date}")
     print(f"Season: {SEASON}, Site ID: {SITE_ID}\n")
 
@@ -745,13 +782,16 @@ def main():
         return
 
     # Categorize
-    group_a, group_b, sjr_cup_a, sjr_cup_b, broadbent_a, broadbent_b = categorize_matches(matches)
+    group_a, group_b, sjr_cup_a, sjr_cup_b, broadbent_a, broadbent_b, t20_group_a, t20_group_b, t20_group_c = categorize_matches(matches)
     print(f"Group A: {len(group_a)} matches")
     print(f"Group B: {len(group_b)} matches")
     print(f"SJR Cup Pool A: {len(sjr_cup_a)} matches")
     print(f"SJR Cup Pool B: {len(sjr_cup_b)} matches")
     print(f"H. Broadbent Trophy Pool A: {len(broadbent_a)} matches")
-    print(f"H. Broadbent Trophy Pool B: {len(broadbent_b)} matches\n")
+    print(f"H. Broadbent Trophy Pool B: {len(broadbent_b)} matches")
+    print(f"Rizues T20 Group A: {len(t20_group_a)} matches")
+    print(f"Rizues T20 Group B: {len(t20_group_b)} matches")
+    print(f"Rizues T20 Group C: {len(t20_group_c)} matches\n")
 
     # Define which competitions to process based on --group arg
     competitions_to_process = []
@@ -772,6 +812,13 @@ def main():
         broadbent_combined = broadbent_a + broadbent_b
         if broadbent_combined:
             competitions_to_process.append(("H. Broadbent Trophy", broadbent_combined))
+    if args.group in ("t20", "all"):
+        if t20_group_a:
+            competitions_to_process.append(("Rizues T20 Group A", t20_group_a))
+        if t20_group_b:
+            competitions_to_process.append(("Rizues T20 Group B", t20_group_b))
+        if t20_group_c:
+            competitions_to_process.append(("Rizues T20 Group C", t20_group_c))
 
     if not competitions_to_process:
         print("No matches found for the selected competition(s).")
