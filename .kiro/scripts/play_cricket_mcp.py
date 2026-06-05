@@ -630,39 +630,46 @@ def get_team_short(team_name):
 
 def generate_poll_options(group_name, match_analyses):
     """Generate WhatsApp poll options (max 100 chars each).
-    Includes all top performers within 2 points of the highest scorer across all matches.
-    Guarantees a minimum of 3 options for comparison.
+    Always includes the top performer from each match (match nominees),
+    plus any additional players within 2 points of the leader.
     """
     lines = []
     lines.append(f"\n{'='*50}")
     lines.append(f"🗳️ {group_name} — WhatsApp Poll Options (max 100 chars)")
     lines.append(f"{'='*50}\n")
 
-    # Collect ALL top performers from all matches with their match context
+    # Collect match nominees (top performer per match) and all candidates
+    match_nominees = []  # One per match — guaranteed in poll
     all_candidates = []
+
     for analysis in match_analyses:
         if analysis is None:
             continue
         if not analysis["top_performers"]:
             continue
 
-        for player in analysis["top_performers"]:
+        for idx, player in enumerate(analysis["top_performers"]):
             # Determine opponent
             if player["team"] == analysis["home_club"]:
                 opponent = analysis["away_club"]
             else:
                 opponent = analysis["home_club"]
 
-            all_candidates.append({
+            candidate = {
                 "player": player,
                 "opponent": opponent
-            })
+            }
+            all_candidates.append(candidate)
+
+            # First player in each match is the match nominee
+            if idx == 0:
+                match_nominees.append(candidate)
 
     if not all_candidates:
         lines.append("No candidates found.")
         return "\n".join(lines)
 
-    # Sort by score descending, then winning team as tiebreaker
+    # Sort all candidates by score descending, then winning team as tiebreaker
     all_candidates.sort(key=lambda c: (c["player"]["score"], c["player"].get("won_match", False)), reverse=True)
 
     # Remove duplicates (same player appearing in multiple contexts) - keep highest score
@@ -674,25 +681,25 @@ def generate_poll_options(group_name, match_analyses):
             seen.add(name)
             unique_candidates.append(c)
 
-    # Find the top score and determine poll options
+    # Start with match nominees (guaranteed in poll)
+    nominee_names = set(c["player"]["name"] for c in match_nominees)
+    filtered_names = set(nominee_names)
+    filtered = list(match_nominees)
+
+    # Add extras within 2 points of the leader (if not already a nominee)
     top_score = unique_candidates[0]["player"]["score"]
     second_score = unique_candidates[1]["player"]["score"] if len(unique_candidates) > 1 else 0
 
-    # If the leader is 3+ points clear, they're a clear winner — show only top 3
-    if top_score - second_score >= 3:
-        filtered = unique_candidates[:3]
-    else:
-        # Otherwise show all within 2 points of the top, capped at 5
+    if top_score - second_score < 3:
+        # Not a clear winner — add extras within 2 points
         threshold = top_score - 2
-        filtered = [c for c in unique_candidates if c["player"]["score"] >= threshold]
-        if len(filtered) > 5:
-            filtered = filtered[:5]
+        for c in unique_candidates:
+            if c["player"]["name"] not in filtered_names and c["player"]["score"] >= threshold:
+                filtered.append(c)
+                filtered_names.add(c["player"]["name"])
 
-    # Ensure minimum 3 options for comparison
-    if len(filtered) < 3 and len(unique_candidates) >= 3:
-        filtered = unique_candidates[:3]
-    elif len(filtered) < 3:
-        filtered = unique_candidates
+    # Sort final list by score descending, then winning team
+    filtered.sort(key=lambda c: (c["player"]["score"], c["player"].get("won_match", False)), reverse=True)
 
     for i, candidate in enumerate(filtered, 1):
         winner = candidate["player"]
