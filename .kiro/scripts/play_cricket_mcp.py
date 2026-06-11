@@ -528,14 +528,14 @@ def generate_one_liner(player, won_match=False):
 
 
 def generate_whatsapp_summary(group_name, match_analyses):
-    """Generate a WhatsApp-ready summary with one-liners for each match POTM."""
+    """Generate a WhatsApp-ready summary showing all top performers sorted by score."""
     lines = []
     lines.append(f"\n{'='*50}")
     lines.append(f"📱 {group_name} — POTM Nominations (WhatsApp Ready)")
     lines.append(f"{'='*50}\n")
 
-    overall_top = []
-    match_num = 0
+    # Collect ALL top performers from all matches
+    all_nominees = []
 
     for i, analysis in enumerate(match_analyses, 1):
         if analysis is None:
@@ -544,38 +544,60 @@ def generate_whatsapp_summary(group_name, match_analyses):
         if not analysis["top_performers"]:
             continue
 
-        match_num += 1
-        winner = analysis["top_performers"][0]
-        # Determine opponent
-        if winner["team"] == analysis["home_club"]:
-            opponent = analysis["away_club"]
-        else:
-            opponent = analysis["home_club"]
+        for player in analysis["top_performers"]:
+            # Determine opponent
+            if player["team"] == analysis["home_club"]:
+                opponent = analysis["away_club"]
+            else:
+                opponent = analysis["home_club"]
 
-        won_match = analysis.get("winning_team", "") and analysis["winning_team"] in winner["team"]
-        one_liner = generate_one_liner(winner, won_match=won_match)
-        perf_str = format_performance(winner)
-        win_emoji = "✅" if won_match else "❌"
+            won_match = analysis.get("winning_team", "") and analysis["winning_team"] in player["team"]
 
-        # Determine result text
-        result_text = analysis.get("result", "")
+            all_nominees.append({
+                **player,
+                "opponent": opponent,
+                "won_match": won_match,
+                "result": analysis.get("result", "")
+            })
 
-        lines.append(f"{match_num}. *{winner['name']}* ({winner['team']} {win_emoji}) vs {opponent}")
-        lines.append(f"   Result: {result_text}")
-        lines.append(f"   {perf_str} | {winner['score']:.0f}pts")
+    # Sort by score descending, then winning team as tiebreaker
+    all_nominees.sort(key=lambda x: (x["score"], x.get("won_match", False)), reverse=True)
+
+    # Remove duplicates (same player name) — keep highest score
+    seen = set()
+    unique_nominees = []
+    for n in all_nominees:
+        if n["name"] not in seen:
+            seen.add(n["name"])
+            unique_nominees.append(n)
+
+    # Cap nominations: max 10, stop when player's score is 3+ less than the top scorer
+    capped_nominees = []
+    top_score = unique_nominees[0]["score"] if unique_nominees else 0
+    for idx, nominee in enumerate(unique_nominees):
+        if idx >= 10:
+            break
+        if top_score - nominee["score"] >= 3:
+            break
+        capped_nominees.append(nominee)
+    # Ensure at least 3 nominees
+    if len(capped_nominees) < 3 and len(unique_nominees) >= 3:
+        capped_nominees = unique_nominees[:3]
+
+    # Display capped nominees sorted by score
+    for idx, nominee in enumerate(capped_nominees, 1):
+        one_liner = generate_one_liner(nominee, won_match=nominee["won_match"])
+        perf_str = format_performance(nominee)
+        win_emoji = "✅" if nominee["won_match"] else "❌"
+
+        lines.append(f"{idx}. *{nominee['name']}* ({nominee['team']} {win_emoji}) vs {nominee['opponent']}")
+        lines.append(f"   {perf_str} | {nominee['score']:.0f}pts")
         lines.append(f"   _{one_liner}_")
         lines.append("")
 
-        overall_top.append({
-            **winner,
-            "opponent": opponent,
-            "won_match": won_match
-        })
-
-    # Overall pick — sort by score, then winning team as tiebreaker
-    overall_top.sort(key=lambda x: (x["score"], x["won_match"]), reverse=True)
-    if overall_top:
-        pick = overall_top[0]
+    # Overall pick
+    if capped_nominees:
+        pick = capped_nominees[0]
         one_liner = generate_one_liner(pick, won_match=pick["won_match"])
         perf_str = format_performance(pick)
         pick_emoji = "✅" if pick["won_match"] else "❌"
@@ -630,49 +652,40 @@ def get_team_short(team_name):
 
 def generate_poll_options(group_name, match_analyses):
     """Generate WhatsApp poll options (max 100 chars each).
-    Always includes the top performer from each match (match nominees),
-    plus any additional players within 2 points of the leader.
+    Takes the top 5 performers from the nominations list.
     """
     lines = []
     lines.append(f"\n{'='*50}")
     lines.append(f"🗳️ {group_name} — WhatsApp Poll Options (max 100 chars)")
     lines.append(f"{'='*50}\n")
 
-    # Collect match nominees (top performer per match) and all candidates
-    match_nominees = []  # One per match — guaranteed in poll
+    # Collect ALL top performers from all matches
     all_candidates = []
-
     for analysis in match_analyses:
         if analysis is None:
             continue
         if not analysis["top_performers"]:
             continue
 
-        for idx, player in enumerate(analysis["top_performers"]):
-            # Determine opponent
+        for player in analysis["top_performers"]:
             if player["team"] == analysis["home_club"]:
                 opponent = analysis["away_club"]
             else:
                 opponent = analysis["home_club"]
 
-            candidate = {
+            all_candidates.append({
                 "player": player,
                 "opponent": opponent
-            }
-            all_candidates.append(candidate)
-
-            # First player in each match is the match nominee
-            if idx == 0:
-                match_nominees.append(candidate)
+            })
 
     if not all_candidates:
         lines.append("No candidates found.")
         return "\n".join(lines)
 
-    # Sort all candidates by score descending, then winning team as tiebreaker
+    # Sort by score descending, then winning team as tiebreaker
     all_candidates.sort(key=lambda c: (c["player"]["score"], c["player"].get("won_match", False)), reverse=True)
 
-    # Remove duplicates (same player appearing in multiple contexts) - keep highest score
+    # Remove duplicates (same player name) — keep highest score
     seen = set()
     unique_candidates = []
     for c in all_candidates:
@@ -681,25 +694,8 @@ def generate_poll_options(group_name, match_analyses):
             seen.add(name)
             unique_candidates.append(c)
 
-    # Start with match nominees (guaranteed in poll)
-    nominee_names = set(c["player"]["name"] for c in match_nominees)
-    filtered_names = set(nominee_names)
-    filtered = list(match_nominees)
-
-    # Add extras within 2 points of the leader (if not already a nominee)
-    top_score = unique_candidates[0]["player"]["score"]
-    second_score = unique_candidates[1]["player"]["score"] if len(unique_candidates) > 1 else 0
-
-    if top_score - second_score < 3:
-        # Not a clear winner — add extras within 2 points
-        threshold = top_score - 2
-        for c in unique_candidates:
-            if c["player"]["name"] not in filtered_names and c["player"]["score"] >= threshold:
-                filtered.append(c)
-                filtered_names.add(c["player"]["name"])
-
-    # Sort final list by score descending, then winning team
-    filtered.sort(key=lambda c: (c["player"]["score"], c["player"].get("won_match", False)), reverse=True)
+    # Take top 5
+    filtered = unique_candidates[:5]
 
     for i, candidate in enumerate(filtered, 1):
         winner = candidate["player"]
