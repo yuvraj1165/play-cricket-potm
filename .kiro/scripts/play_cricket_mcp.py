@@ -646,7 +646,14 @@ def format_performance_short(player):
 
 
 def get_team_short(team_name):
-    """Get team name without 'CC' suffix for poll options."""
+    """Get team name without 'CC' suffix for poll options, with custom overrides."""
+    # Custom overrides
+    overrides = {
+        "Greenfield CC, Yorkshire": "Greenfield",
+        "Kashmir (Bradford) CC": "Bradford Kashmir",
+    }
+    if team_name in overrides:
+        return overrides[team_name]
     return team_name.replace(" CC", "").strip()
 
 
