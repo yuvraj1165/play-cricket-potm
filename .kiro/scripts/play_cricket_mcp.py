@@ -561,7 +561,7 @@ def generate_whatsapp_summary(group_name, match_analyses):
             })
 
     # Sort by score descending, then winning team as tiebreaker
-    all_nominees.sort(key=lambda x: (x["score"], x.get("won_match", False)), reverse=True)
+    all_nominees.sort(key=lambda x: (x["score"], bool(x.get("won_match", False))), reverse=True)
 
     # Remove duplicates (same player name) — keep highest score
     seen = set()
