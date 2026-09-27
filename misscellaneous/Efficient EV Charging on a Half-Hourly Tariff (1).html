@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Efficient EV Charging — using energy on a half-hourly tariff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0F1229;
+    --surface:#171B3B;
+    --surface-2:#1D2247;
+    --line:#2B3061;
+    --text:#EDEFF7;
+    --text-dim:#9098BF;
+    --amber:#F5B942;
+    --teal:#39CDAF;
+    --teal-dim: rgba(57,205,175,0.14);
+    --amber-dim: rgba(245,185,66,0.14);
+    --radius: 10px;
+  }
+  :root{ box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+  *,*::before,*::after{ box-sizing:inherit; }
+  html{ scroll-padding-top:env(safe-area-inset-top,0px); }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{ max-width:760px; margin:0 auto; padding:0 24px; }
+
+  header.site{ padding:64px 0 28px; border-bottom:1px solid var(--line); }
+  .kicker{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    color:var(--teal);
+    letter-spacing:0.02em;
+    margin:0 0 14px;
+  }
+  h1.title{
+    font-family:'Fraunces', Georgia, serif;
+    font-weight:600;
+    font-size:clamp(34px,6.5vw,52px);
+    line-height:1.08;
+    margin:0 0 18px;
+    max-width:16ch;
+  }
+  .dek{
+    font-size:17px;
+    color:var(--text-dim);
+    max-width:52ch;
+    margin:0;
+  }
+  .byline{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13.5px;
+    color:var(--text-dim);
+    margin:16px 0 0;
+  }
+
+  /* Hero meter */
+  .meter{
+    display:flex;
+    align-items:baseline;
+    gap:20px;
+    flex-wrap:wrap;
+    margin:40px 0 8px;
+  }
+  .meter .num{
+    font-family:'IBM Plex Mono', monospace;
+    font-weight:600;
+    font-size:clamp(56px,12vw,96px);
+    color:var(--amber);
+    letter-spacing:-0.01em;
+    line-height:1;
+  }
+  .meter .num small{ font-size:0.42em; color:var(--text-dim); font-weight:400; margin-left:6px; }
+  .meter-caption{
+    font-size:15px;
+    color:var(--text-dim);
+    max-width:44ch;
+    margin:6px 0 0;
+  }
+
+  .stat-row{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:1px;
+    background:var(--line);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    overflow:hidden;
+    margin:36px 0 8px;
+  }
+  .stat-row div{ background:var(--surface); padding:18px 16px; }
+  .stat-row .v{ font-family:'IBM Plex Mono', monospace; font-size:22px; font-weight:600; color:var(--text); }
+  .stat-row .l{ font-size:12.5px; color:var(--text-dim); margin-top:4px; }
+
+  section.intro{ padding:44px 0 8px; }
+  section.intro p{ font-size:16.5px; color:#D6D9EE; max-width:60ch; }
+  section.intro p + p{ margin-top:14px; }
+  section.intro a{ color:var(--teal); }
+
+  h2.section-title{
+    font-family:'Fraunces', serif;
+    font-weight:500;
+    font-size:26px;
+    margin:0 0 6px;
+  }
+  .section-title-wrap{ margin-bottom:20px; }
+  .section-note{ color:var(--text-dim); font-size:14.5px; margin:0; max-width:56ch; }
+
+  section.setup{ padding:52px 0 8px; border-top:1px solid var(--line); }
+  section.setup p{ font-size:16px; color:#D6D9EE; max-width:60ch; margin:0 0 14px; }
+  .setup-list{ margin:0 0 22px; padding-left:20px; color:#D6D9EE; font-size:15.5px; }
+  .setup-list li{ margin-bottom:6px; }
+
+  table.example{
+    width:100%;
+    border-collapse:collapse;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:14px;
+    margin:18px 0 26px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  table.example th, table.example td{
+    text-align:left;
+    padding:10px 14px;
+    border-bottom:1px solid var(--line);
+  }
+  table.example th{ color:var(--text-dim); font-weight:500; font-size:12.5px; text-transform:none; }
+  table.example tr:last-child td{ border-bottom:none; }
+  table.example td.neg{ color:var(--teal); }
+  table.example td.pos{ color:var(--text); }
+  table.example .action{ color:var(--text-dim); font-family:'IBM Plex Sans', sans-serif; font-size:13.5px; }
+
+  /* Summary table */
+  section.summary-table{ padding:52px 0 8px; border-top:1px solid var(--line); }
+  table.summary{
+    width:100%;
+    border-collapse:collapse;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13.5px;
+    margin-top:18px;
+  }
+  table.summary th, table.summary td{
+    text-align:left;
+    padding:10px 8px;
+    border-bottom:1px solid var(--line);
+  }
+  table.summary th{ color:var(--text-dim); font-weight:500; font-size:11.5px; }
+  table.summary td.month{ font-family:'Fraunces', serif; font-size:14.5px; color:var(--text); }
+  table.summary td.amber{ color:var(--amber); }
+  @media(max-width:520px){
+    table.summary{ font-size:12px; }
+    table.summary th, table.summary td{ padding:8px 5px; }
+  }
+
+  /* Monthly journal */
+  section.journal{ padding:52px 0 8px; border-top:1px solid var(--line); }
+  .entry{ border-top:1px solid var(--line); padding:34px 0; }
+  .entry:first-of-type{ border-top:none; }
+  .entry-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:16px;
+    margin-bottom:14px;
+  }
+  .entry-month{
+    font-family:'Fraunces', serif;
+    font-size:22px;
+    font-weight:500;
+  }
+  .entry-neg{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13.5px;
+    color:var(--teal);
+    background:var(--teal-dim);
+    padding:4px 10px;
+    border-radius:100px;
+    white-space:nowrap;
+  }
+  .entry-note{ font-size:15.5px; color:#C7CBE6; max-width:60ch; margin:0 0 18px; }
+  .entry-note strong{ color:var(--text); font-weight:500; }
+
+  .entry-stats{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:14px;
+  }
+  .entry-stats .cell .v{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:18px;
+    font-weight:600;
+    color:var(--text);
+  }
+  .entry-stats .cell .v.amber{ color:var(--amber); }
+  .entry-stats .cell .l{ font-size:12px; color:var(--text-dim); margin-top:3px; }
+
+  @media(max-width:520px){
+    .entry-stats{ grid-template-columns:repeat(2,1fr); }
+    .stat-row{ grid-template-columns:1fr; }
+  }
+
+  /* Behaviour callout */
+  section.behaviour{ padding:52px 0 8px; border-top:1px solid var(--line); }
+  .callout{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-left:3px solid var(--amber);
+    border-radius:var(--radius);
+    padding:22px 22px 20px;
+  }
+  .callout p{ font-size:15.5px; color:#D6D9EE; max-width:58ch; margin:0 0 12px; }
+  .callout p:last-child{ margin-bottom:0; }
+  .callout p strong{ color:var(--text); font-weight:500; }
+
+  /* Chart grid */
+  section.chart-section{ padding:52px 0 8px; border-top:1px solid var(--line); }
+  .chart-grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:20px;
+    margin-top:20px;
+  }
+  .chart-card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:26px 22px 18px;
+  }
+  .chart-card h3{
+    font-family:'Fraunces', serif;
+    font-weight:500;
+    font-size:18px;
+    margin:0 0 20px;
+  }
+  .bar-label{ font-family:'IBM Plex Mono', monospace; font-size:12px; fill:var(--text-dim); }
+  .bar-value{ font-family:'IBM Plex Mono', monospace; font-size:12.5px; fill:var(--text); font-weight:600; }
+
+  /* Why it matters / final thoughts */
+  section.essay{ padding:52px 0 8px; border-top:1px solid var(--line); }
+  section.essay p{ font-size:16px; color:#D6D9EE; max-width:60ch; margin:0 0 14px; }
+  section.essay ul{ margin:0 0 18px; padding-left:20px; color:#D6D9EE; font-size:15.5px; }
+  section.essay li{ margin-bottom:6px; }
+  section.essay .highlight{ color:var(--amber); font-family:'IBM Plex Mono', monospace; }
+
+  footer.site{
+    border-top:1px solid var(--line);
+    padding:32px 0 64px;
+    margin-top:44px;
+  }
+  footer.site p{ font-size:13.5px; color:var(--text-dim); max-width:58ch; margin:0 0 10px; }
+  footer.site .updated{ font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <p class="kicker">a home-energy log</p>
+    <h1 class="title">Efficient EV Charging on a Half-Hourly Tariff</h1>
+    <p class="dek">A five-month log of charging an EV on Octopus Agile — and how negative pricing shaped the results.</p>
+    <p class="byline">By Prince Volt</p>
+  </header>
+
+  <div class="meter">
+    <div class="num">31.3<small>% of my EV charging done at negative prices</small></div>
+  </div>
+  <p class="meter-caption">April–August 2026, across 811 kWh of home EV charging.</p>
+
+  <div class="stat-row">
+    <div><div class="v">8.7p</div><div class="l">real avg price per kWh, EV charging</div></div>
+    <div><div class="v">£70.38</div><div class="l">total EV charging cost, 5 months</div></div>
+    <div><div class="v">~2.2p</div><div class="l">effective running cost per mile</div></div>
+  </div>
+
+  <section class="intro">
+    <p>Between April and August 2026, I charged my EV 811 kWh at home using an Andersen A3 7&nbsp;kW charger on Octopus Agile — a UK electricity tariff where the price changes every 30 minutes based on real-time wholesale market conditions.</p>
+    <p>When renewable generation is high — windy nights, sunny afternoons — the grid can become oversupplied. Agile reflects this directly: prices can drop below zero, meaning you're paid to use electricity.</p>
+    <p>Across these five months, about 3,200 miles of driving cost £70.38 in charging — an effective running cost of roughly 2.2p per mile. This page walks through how that happened, month by month.</p>
+  </section>
+
+  <section class="setup">
+    <div class="section-title-wrap">
+      <h2 class="section-title">The setup</h2>
+    </div>
+    <ul class="setup-list">
+      <li><strong style="color:var(--text)">Charger:</strong> Andersen A3 (7 kW), using its price-threshold scheduling</li>
+      <li><strong style="color:var(--text)">Tariff:</strong> Octopus Agile (half-hourly pricing)</li>
+      <li><strong style="color:var(--text)">Method:</strong> set a maximum price — say 10p/kWh — and the charger automatically activates only in slots cheaper than that</li>
+    </ul>
+    <p>Every day, around 4pm, Octopus publishes the next day's 48 half-hour prices. A worked example:</p>
+    <table class="example">
+      <thead><tr><th>Time slot</th><th>Price</th><th>With a 10p ceiling</th></tr></thead>
+      <tbody>
+        <tr><td>11:00–11:30</td><td class="neg">−25.00p/kWh</td><td class="action">Charges (negative price)</td></tr>
+        <tr><td>11:30–12:00</td><td class="pos">+12.00p/kWh</td><td class="action">Stays off</td></tr>
+        <tr><td>12:00–12:30</td><td class="pos">+18.50p/kWh</td><td class="action">Stays off</td></tr>
+      </tbody>
+    </table>
+    <p>This makes the car charge only when energy is cheapest — or even profitable.</p>
+  </section>
+
+  <section class="summary-table">
+    <div class="section-title-wrap">
+      <h2 class="section-title">Five-month summary</h2>
+    </div>
+    <table class="summary">
+      <thead><tr><th>Month</th><th>kWh charged</th><th>% negative</th><th>Avg price/kWh</th><th>Cost</th><th>Miles</th></tr></thead>
+      <tbody>
+        <tr><td class="month">April</td><td>79.0</td><td>64%</td><td class="amber">3.9p</td><td>£3.08</td><td>~310</td></tr>
+        <tr><td class="month">May</td><td>242.0</td><td>0%</td><td class="amber">14.6p</td><td>£35.26</td><td>~960</td></tr>
+        <tr><td class="month">June</td><td>109.0</td><td>49%</td><td class="amber">2.2p</td><td>£2.44</td><td>~430</td></tr>
+        <tr><td class="month">July</td><td>202.4</td><td>45%</td><td class="amber">3.8p</td><td>£7.72</td><td>~800</td></tr>
+        <tr><td class="month">August</td><td>178.7</td><td>33%</td><td class="amber">12.2p</td><td>£21.86</td><td>~700</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="summary-table">
+    <div class="section-title-wrap">
+      <h2 class="section-title">What about the rest of the house?</h2>
+      <p class="section-note">If EV charging is this cheap, it's a fair question — surely the household bill must be picking up the slack? Not really. Household use isn't shifted around a price ceiling the way EV charging is; it happens whenever it happens, at whatever the half-hourly price is at that moment, which is why the average is so much higher.</p>
+    </div>
+    <table class="summary">
+      <thead><tr><th>Month</th><th>Household kWh</th><th>Cost</th><th>Avg price/kWh</th></tr></thead>
+      <tbody>
+        <tr><td class="month">April</td><td>149.8</td><td>£24.77</td><td class="amber">16.5p</td></tr>
+        <tr><td class="month">May</td><td>145.3</td><td>£29.09</td><td class="amber">20.0p</td></tr>
+        <tr><td class="month">June</td><td>139.1</td><td>£25.25</td><td class="amber">18.2p</td></tr>
+        <tr><td class="month">July</td><td>147.3</td><td>£30.01</td><td class="amber">20.4p</td></tr>
+        <tr><td class="month">August</td><td>138.1</td><td>£34.12</td><td class="amber">24.7p</td></tr>
+        <tr><td class="month" style="font-weight:600;">5-month total</td><td style="font-weight:600;">719.6</td><td style="font-weight:600;">£143.23</td><td class="amber" style="font-weight:600;">19.9p</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:14.5px; color:var(--text-dim); margin-top:16px; max-width:60ch;">On top of that, the fixed daily standing charge — <strong style="color:var(--text)">66.26p/day</strong> — came to <strong style="color:var(--text)">£100.25</strong> over the same five months — a cost every electricity customer pays regardless of usage. Household electricity in total (units + standing charge) was <strong style="color:var(--text)">£243.48</strong>, against £70.38 for the EV. The EV isn't cheap because the house is expensive; it's cheap because charging can be timed, and most household use can't.</p>
+  </section>
+
+  <section class="journal">
+    <div class="section-title-wrap">
+      <h2 class="section-title">Month by month</h2>
+      <p class="section-note">EV cost is charging only, priced at the tariff's real half-hourly rate.</p>
+    </div>
+
+    <div class="entry">
+      <div class="entry-head">
+        <div class="entry-month">April</div>
+        <div class="entry-neg">64% charged at negative price</div>
+      </div>
+      <p class="entry-note">Spring wind and the car being home lined up perfectly. This was the strongest month of the run.</p>
+      <div class="entry-stats">
+        <div class="cell"><div class="v amber">3.9p</div><div class="l">avg EV price / kWh</div></div>
+        <div class="cell"><div class="v">79.0 kWh</div><div class="l">EV charging</div></div>
+        <div class="cell"><div class="v">£3.08</div><div class="l">EV cost</div></div>
+        <div class="cell"><div class="v">~310 mi</div><div class="l">driven</div></div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="entry-head">
+        <div class="entry-month">May</div>
+        <div class="entry-neg" style="color:var(--text-dim); background:var(--surface-2);">0% charged at negative price</div>
+      </div>
+      <p class="entry-note">Not a single negative slot landed while the car was home — a reminder that Agile is seasonal and unpredictable.</p>
+      <div class="entry-stats">
+        <div class="cell"><div class="v amber">14.6p</div><div class="l">avg EV price / kWh</div></div>
+        <div class="cell"><div class="v">242.0 kWh</div><div class="l">EV charging</div></div>
+        <div class="cell"><div class="v">£35.26</div><div class="l">EV cost</div></div>
+        <div class="cell"><div class="v">~960 mi</div><div class="l">driven</div></div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="entry-head">
+        <div class="entry-month">June</div>
+        <div class="entry-neg">49% charged at negative price</div>
+      </div>
+      <p class="entry-note">Back to form — nearly half the charging was free or better. Cheaper than most people's standing charge alone.</p>
+      <div class="entry-stats">
+        <div class="cell"><div class="v amber">2.2p</div><div class="l">avg EV price / kWh</div></div>
+        <div class="cell"><div class="v">109.0 kWh</div><div class="l">EV charging</div></div>
+        <div class="cell"><div class="v">£2.44</div><div class="l">EV cost</div></div>
+        <div class="cell"><div class="v">~430 mi</div><div class="l">driven</div></div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="entry-head">
+        <div class="entry-month">July</div>
+        <div class="entry-neg">45% charged at negative price</div>
+      </div>
+      <p class="entry-note">More driving than June, but still an excellent hit rate on cheap windows.</p>
+      <div class="entry-stats">
+        <div class="cell"><div class="v amber">3.8p</div><div class="l">avg EV price / kWh</div></div>
+        <div class="cell"><div class="v">202.4 kWh</div><div class="l">EV charging</div></div>
+        <div class="cell"><div class="v">£7.72</div><div class="l">EV cost</div></div>
+        <div class="cell"><div class="v">~800 mi</div><div class="l">driven</div></div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="entry-head">
+        <div class="entry-month">August</div>
+        <div class="entry-neg">33% charged at negative price</div>
+      </div>
+      <p class="entry-note">A fixed-day full charge for a trip pushed some charging into higher slots — still far cheaper than public charging.</p>
+      <div class="entry-stats">
+        <div class="cell"><div class="v amber">12.2p</div><div class="l">avg EV price / kWh</div></div>
+        <div class="cell"><div class="v">178.7 kWh</div><div class="l">EV charging</div></div>
+        <div class="cell"><div class="v">£21.86</div><div class="l">EV cost</div></div>
+        <div class="cell"><div class="v">~700 mi</div><div class="l">driven</div></div>
+      </div>
+    </div>
+
+  </section>
+
+  <section class="behaviour">
+    <div class="section-title-wrap">
+      <h2 class="section-title">I didn't optimise aggressively</h2>
+    </div>
+    <div class="callout">
+      <p>One important detail: I didn't aggressively chase negative windows. My daily routine stayed the same throughout these five months. I only changed my plan on the odd occasion — usually when I happened to notice a negative slot coming up, or when I needed a top-up at a positive rate before a trip.</p>
+      <p>Most of the time, I simply let the Andersen A3 follow the price ceiling I'd set and charge whenever it made sense. Going forward, my plan is to target the negative slots I've been missing — mainly on weekends, where 56% of negative half-hours went unused, and on office days, where 91% went unused, since those are the two situations where the car is usually away from home.</p>
+      <p><strong>In other words, these results aren't the maximum possible</strong> — they're what happened with normal, everyday use. A more deliberate strategy would push the average cost per kWh even lower.</p>
+    </div>
+  </section>
+
+  <section class="chart-section">
+    <div class="section-title-wrap">
+      <h2 class="section-title">The numbers, charted</h2>
+    </div>
+    <div class="chart-grid">
+
+      <div class="chart-card">
+        <h3>Average EV charging price by month</h3>
+        <svg viewBox="0 0 680 220" width="100%" role="img" aria-label="Bar chart of average EV charging price per kWh by month">
+          <line x1="40" y1="180" x2="660" y2="180" stroke="#2B3061" stroke-width="1"/>
+          <g>
+            <rect x="70"  y="146" width="70" height="34" rx="4" fill="#39CDAF"></rect>
+            <text x="105" y="138" text-anchor="middle" class="bar-value">3.9p</text>
+            <text x="105" y="200" text-anchor="middle" class="bar-label">Apr</text>
+
+            <rect x="190" y="42" width="70" height="138" rx="4" fill="#F5B942"></rect>
+            <text x="225" y="34" text-anchor="middle" class="bar-value">14.6p</text>
+            <text x="225" y="200" text-anchor="middle" class="bar-label">May</text>
+
+            <rect x="310" y="161" width="70" height="19" rx="4" fill="#39CDAF"></rect>
+            <text x="345" y="153" text-anchor="middle" class="bar-value">2.2p</text>
+            <text x="345" y="200" text-anchor="middle" class="bar-label">Jun</text>
+
+            <rect x="430" y="148" width="70" height="32" rx="4" fill="#39CDAF"></rect>
+            <text x="465" y="140" text-anchor="middle" class="bar-value">3.8p</text>
+            <text x="465" y="200" text-anchor="middle" class="bar-label">Jul</text>
+
+            <rect x="550" y="65" width="70" height="115" rx="4" fill="#F5B942"></rect>
+            <text x="585" y="57" text-anchor="middle" class="bar-value">12.2p</text>
+            <text x="585" y="200" text-anchor="middle" class="bar-label">Aug</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="chart-card">
+        <h3>Share of charging at negative prices</h3>
+        <svg viewBox="0 0 680 220" width="100%" role="img" aria-label="Bar chart of percent of EV charging at negative prices by month">
+          <line x1="40" y1="180" x2="660" y2="180" stroke="#2B3061" stroke-width="1"/>
+          <g>
+            <rect x="70"  y="58" width="70" height="122" rx="4" fill="#39CDAF"></rect>
+            <text x="105" y="50" text-anchor="middle" class="bar-value">64%</text>
+            <text x="105" y="200" text-anchor="middle" class="bar-label">Apr</text>
+
+            <rect x="190" y="178" width="70" height="2" rx="1" fill="#3A4068"></rect>
+            <text x="225" y="170" text-anchor="middle" class="bar-value" style="fill:var(--text-dim)">0%</text>
+            <text x="225" y="200" text-anchor="middle" class="bar-label">May</text>
+
+            <rect x="310" y="86" width="70" height="94" rx="4" fill="#39CDAF"></rect>
+            <text x="345" y="78" text-anchor="middle" class="bar-value">49%</text>
+            <text x="345" y="200" text-anchor="middle" class="bar-label">Jun</text>
+
+            <rect x="430" y="94" width="70" height="86" rx="4" fill="#39CDAF"></rect>
+            <text x="465" y="86" text-anchor="middle" class="bar-value">45%</text>
+            <text x="465" y="200" text-anchor="middle" class="bar-label">Jul</text>
+
+            <rect x="550" y="116" width="70" height="64" rx="4" fill="#39CDAF"></rect>
+            <text x="585" y="108" text-anchor="middle" class="bar-value">33%</text>
+            <text x="585" y="200" text-anchor="middle" class="bar-label">Aug</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="chart-card">
+        <h3>Total monthly EV charging cost</h3>
+        <svg viewBox="0 0 680 220" width="100%" role="img" aria-label="Bar chart of total EV charging cost by month">
+          <line x1="40" y1="180" x2="660" y2="180" stroke="#2B3061" stroke-width="1"/>
+          <g>
+            <rect x="70"  y="167" width="70" height="13" rx="4" fill="#39CDAF"></rect>
+            <text x="105" y="159" text-anchor="middle" class="bar-value">£3.08</text>
+            <text x="105" y="200" text-anchor="middle" class="bar-label">Apr</text>
+
+            <rect x="190" y="35" width="70" height="145" rx="4" fill="#F5B942"></rect>
+            <text x="225" y="27" text-anchor="middle" class="bar-value">£35.26</text>
+            <text x="225" y="200" text-anchor="middle" class="bar-label">May</text>
+
+            <rect x="310" y="170" width="70" height="10" rx="4" fill="#39CDAF"></rect>
+            <text x="345" y="162" text-anchor="middle" class="bar-value">£2.44</text>
+            <text x="345" y="200" text-anchor="middle" class="bar-label">Jun</text>
+
+            <rect x="430" y="148" width="70" height="32" rx="4" fill="#39CDAF"></rect>
+            <text x="465" y="140" text-anchor="middle" class="bar-value">£7.72</text>
+            <text x="465" y="200" text-anchor="middle" class="bar-label">Jul</text>
+
+            <rect x="550" y="90" width="70" height="90" rx="4" fill="#F5B942"></rect>
+            <text x="585" y="82" text-anchor="middle" class="bar-value">£21.86</text>
+            <text x="585" y="200" text-anchor="middle" class="bar-label">Aug</text>
+          </g>
+        </svg>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="essay">
+    <div class="section-title-wrap">
+      <h2 class="section-title">Why negative pricing matters</h2>
+    </div>
+    <p>Negative pricing isn't a gimmick — it's a real part of the UK grid's behaviour during high renewable output. Over five months:</p>
+    <ul>
+      <li><span class="highlight">31.3%</span> of my EV charging was at negative prices</li>
+      <li>The real cost was <span class="highlight">£70.38</span> for roughly 3,200 miles</li>
+      <li>That's about <span class="highlight">2.2p</span> per mile — cheaper than almost any petrol or public EV charging option</li>
+    </ul>
+    <p>Any system that doesn't handle negative values correctly will misreport costs by a wide margin — which is part of why accurate negative-price support in apps and chargers matters.</p>
+  </section>
+
+  <section class="essay" style="padding-top:8px; border-top:none;">
+    <div class="section-title-wrap">
+      <h2 class="section-title">Final thoughts</h2>
+    </div>
+    <p>Charging an EV on Octopus Agile with an Andersen A3 isn't just cheap — it's a fascinating look at how real-time energy markets work. When the grid is greenest, charging becomes cheapest. When the grid is oversupplied, charging becomes profitable.</p>
+    <p>This log will continue monthly as new data comes in.</p>
+    <p>This page is my own personal experience, not financial or energy advice — tariffs, chargers, and driving patterns vary a lot, so please do your own research (or run your own numbers) before switching anything based on what's written here. Happy to help if you have questions.</p>
+  </section>
+
+  <section class="behaviour" style="padding-top:52px;">
+    <div class="section-title-wrap">
+      <h2 class="section-title">Considering Octopus?</h2>
+    </div>
+    <div class="callout" style="border-left-color:var(--teal);">
+      <p>If you're thinking about switching to Octopus, you can use my referral link: <a href="https://share.octopus.energy/flax-briar-389" style="color:var(--teal);">share.octopus.energy/flax-briar-389</a> — split £100 with me when you sign up (or £150 if you're signing up a business), plus 800 Octopoints if you're on Octoplus.</p>
+      <p>This is my own referral link, not an official Octopus page or promotion — use it only if it's useful to you.</p>
+    </div>
+  </section>
+
+  <footer class="site">
+    <p><strong style="color:var(--text)">Method:</strong> EV energy is metered directly by the home charger; every other half-hour of household electricity use is priced at the same real-time tariff rate. No bills, account details, or exact addresses are shown — every figure above is an aggregate, rounded from the underlying half-hourly data.</p>
+    <p>Figures cross-checked against Octopus billing statements for April&ndash;August 2026.</p>
+    <p>New month added as the data comes in.</p>
+    <p class="updated">Last updated: September 2026 · covers April–August 2026</p>
+  </footer>
+
+</div>
+</body>
+</html>
